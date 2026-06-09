@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const BASE_URL = 'http://localhost:8000';
+// Uses VITE_API_URL env var in production, falls back to localhost for local dev
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export const api = axios.create({
   baseURL: BASE_URL,
