@@ -1,0 +1,46 @@
+# ── Python ──────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+venv/
+env/
+.venv/
+*.pyc
+
+# ── Environment Variables (NEVER commit!) ──
+.env
+.env.local
+.env.production
+*.env
+
+# ── Node / Frontend ──────────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/build/
+
+# ── OS Files ─────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ───────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.user
+
+# ── Logs ──────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+
+# ── Misc ──────────────────────────────────
+*.tmp
+*.bak
