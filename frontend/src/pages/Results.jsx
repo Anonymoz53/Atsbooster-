@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import ATSScoreCard from '../components/ATSScoreCard';
 import ChangesLog from '../components/ChangesLog';
-import { exportPdf } from '../lib/api';
+import { downloadPdf } from '../lib/pdf-generator';
 
 export default function Results() {
   const navigate = useNavigate();
@@ -24,14 +24,13 @@ export default function Results() {
     }
   }, [navigate]);
 
-  const handleExportPdf = async () => {
+  const handleExportPdf = () => {
     setExportError('');
     setExporting(true);
     try {
-      // Try to extract name from first line of optimized resume
       const firstLine = result.optimized_text.split('\n')[0].trim();
       const candidateName = firstLine.length < 60 ? firstLine : 'Candidate';
-      await exportPdf(result.optimized_text, candidateName);
+      downloadPdf(result.optimized_text, candidateName);
     } catch (err) {
       setExportError('PDF export failed. Please try again or copy the text manually.');
     } finally {

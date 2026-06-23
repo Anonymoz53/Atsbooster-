@@ -1,9 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import FileUploader from '../components/FileUploader';
 import PaywallModal from '../components/PaywallModal';
+import ApiKeyModal from '../components/ApiKeyModal';
 import { optimizeResume } from '../lib/api';
 import { isPaywalled, incrementUsage, getFreeRemaining } from '../lib/usage';
+import { hasApiKey } from '../lib/api-key';
 
 const ATS_PLATFORMS = [
   'General ATS',
@@ -25,12 +27,18 @@ export default function Optimize() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
 
   const remaining = getFreeRemaining();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (!hasApiKey()) {
+      setShowApiKeyModal(true);
+      return;
+    }
 
     if (isPaywalled()) {
       setShowPaywall(true);
@@ -54,7 +62,7 @@ export default function Optimize() {
       sessionStorage.setItem('optimizeResult', JSON.stringify(result));
       navigate('/results');
     } catch (err) {
-      const msg = err.response?.data?.detail || err.message || 'Something went wrong. Make sure the backend is running.';
+      const msg = err.message || 'Something went wrong. Please check your API key and try again.';
       setError(msg);
     } finally {
       setLoading(false);
@@ -64,6 +72,7 @@ export default function Optimize() {
   return (
     <div style={{ minHeight: '100vh', padding: '40px 0 80px' }}>
       {showPaywall && <PaywallModal onClose={() => setShowPaywall(false)} />}
+      {showApiKeyModal && <ApiKeyModal onSaved={() => setShowApiKeyModal(false)} />}
 
       <div className="container" style={{ maxWidth: '800px' }}>
         {/* Header */}
