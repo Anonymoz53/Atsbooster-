@@ -1,240 +1,362 @@
-import { jsPDF } from 'jspdf';
+/**
+ * Browser-native PDF generation via window.print()
+ * Same approach used by rxresu.me v5+ — renders HTML and uses
+ * the browser's PDF engine for professional quality output.
+ */
 
-// ── Design tokens ──────────────────────────────────────────────────────────
-const C = {
-  accent:  [13, 115, 119],   // teal #0d7377
-  dark:    [22,  31,  48],   // near-black
-  body:    [45,  55,  72],   // dark gray
-  muted:   [107, 114, 128],  // gray-500
-  divider: [209, 213, 219],  // gray-300
-  white:   [255, 255, 255],
-};
+function escapeHtml(str = '') {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
-const F = {
-  name:       { size: 22, style: 'bold' },
-  contact:    { size: 9,  style: 'normal' },
-  sectionHdr: { size: 11, style: 'bold' },
-  jobTitle:   { size: 10.5, style: 'bold' },
-  company:    { size: 10, style: 'italic' },
-  body:       { size: 10, style: 'normal' },
-  bullet:     { size: 9.5, style: 'normal' },
-  skills:     { size: 9.5, style: 'normal' },
-  small:      { size: 8.5, style: 'normal' },
-};
-
-// A4 layout
-const PW = 210, PH = 297;
-const ML = 16, MR = 16, MT = 16, MB = 20;
-const CW = PW - ML - MR;
-
-export function generatePdfFromStructured(data) {
-  const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
-  let y = MT;
-
-  // ── Helpers ────────────────────────────────────────────────────────────
-  const font = (f) => { doc.setFont('helvetica', f.style); doc.setFontSize(f.size); };
-  const color = (rgb) => doc.setTextColor(...rgb);
-  const checkBreak = (needed = 8) => {
-    if (y + needed > PH - MB) { doc.addPage(); y = MT; }
-  };
-
-  const sectionHeader = (title) => {
-    checkBreak(14);
-    y += 4;
-    font(F.sectionHdr); color(C.accent);
-    doc.text(title.toUpperCase(), ML, y);
-    y += 2;
-    doc.setDrawColor(...C.accent);
-    doc.setLineWidth(0.6);
-    doc.line(ML, y, PW - MR, y);
-    y += 5;
-  };
-
-  // ── 1. NAME ────────────────────────────────────────────────────────────
-  if (data.name) {
-    font(F.name); color(C.dark);
-    doc.text(data.name, PW / 2, y, { align: 'center' });
-    y += 7;
-  }
-
-  // ── 2. CONTACT ────────────────────────────────────────────────────────
+function buildResumeHtml(data) {
   const c = data.contact || {};
-  const contactParts = [c.email, c.phone, c.location, c.linkedin, c.github, c.website]
-    .filter(Boolean);
-  if (contactParts.length) {
-    font(F.contact); color(C.muted);
-    const contactLine = contactParts.join('  •  ');
-    const wrapped = doc.splitTextToSize(contactLine, CW);
-    wrapped.forEach(line => {
-      doc.text(line, PW / 2, y, { align: 'center' });
-      y += 4.5;
-    });
-    y += 2;
+
+  const contactItems = [
+    c.email && `<a href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a>`,
+    c.phone && escapeHtml(c.phone),
+    c.location && escapeHtml(c.location),
+    c.linkedin && `<a href="https://${escapeHtml(c.linkedin)}" target="_blank">${escapeHtml(c.linkedin)}</a>`,
+    c.github && `<a href="https://${escapeHtml(c.github)}" target="_blank">${escapeHtml(c.github)}</a>`,
+    c.website && `<a href="${escapeHtml(c.website)}" target="_blank">${escapeHtml(c.website)}</a>`,
+  ].filter(Boolean);
+
+  const experienceHtml = (data.experience || []).map(exp => `
+    <div class="entry">
+      <div class="entry-header">
+        <div>
+          <div class="entry-title">${escapeHtml(exp.title)}</div>
+          <div class="entry-subtitle">${escapeHtml(exp.company)}${exp.location ? ` &mdash; ${escapeHtml(exp.location)}` : ''}</div>
+        </div>
+        <div class="entry-date">${escapeHtml(exp.dates || '')}</div>
+      </div>
+      <ul class="bullet-list">
+        ${(exp.bullets || []).map(b => `<li>${escapeHtml(b.replace(/^[•\-\*]\s*/, ''))}</li>`).join('')}
+      </ul>
+    </div>
+  `).join('');
+
+  const educationHtml = (data.education || []).map(edu => `
+    <div class="entry">
+      <div class="entry-header">
+        <div>
+          <div class="entry-title">${escapeHtml([edu.degree, edu.field].filter(Boolean).join(' in '))}</div>
+          <div class="entry-subtitle">${escapeHtml(edu.school || '')}${edu.location ? ` &mdash; ${escapeHtml(edu.location)}` : ''}</div>
+          ${edu.details ? `<div class="entry-details">${escapeHtml(edu.details)}</div>` : ''}
+        </div>
+        <div class="entry-date">${escapeHtml(edu.dates || '')}</div>
+      </div>
+    </div>
+  `).join('');
+
+  const skillsHtml = Object.entries(data.skills || {}).map(([cat, items]) => `
+    <div class="skill-row">
+      <span class="skill-cat">${escapeHtml(cat)}:</span>
+      <span class="skill-items">${(Array.isArray(items) ? items : [items]).map(escapeHtml).join(' &bull; ')}</span>
+    </div>
+  `).join('');
+
+  const projectsHtml = (data.projects || []).map(proj => `
+    <div class="entry">
+      <div class="entry-header">
+        <div class="entry-title">${escapeHtml(proj.name || '')}</div>
+        ${proj.tech?.length ? `<div class="entry-date">${proj.tech.map(escapeHtml).join(', ')}</div>` : ''}
+      </div>
+      ${proj.description ? `<ul class="bullet-list"><li>${escapeHtml(proj.description)}</li></ul>` : ''}
+    </div>
+  `).join('');
+
+  const certsHtml = (data.certifications || []).map(c =>
+    `<li>${escapeHtml(c)}</li>`
+  ).join('');
+
+  const awardsHtml = (data.awards || []).map(a =>
+    `<li>${escapeHtml(a)}</li>`
+  ).join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>${escapeHtml(data.name || 'Resume')}</title>
+<style>
+  /* ── Reset ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* ── Page setup ── */
+  @page {
+    size: A4;
+    margin: 14mm 16mm;
   }
 
-  // Thin top divider under header
-  doc.setDrawColor(...C.divider);
-  doc.setLineWidth(0.3);
-  doc.line(ML, y, PW - MR, y);
-  y += 5;
-
-  // ── 3. SUMMARY ────────────────────────────────────────────────────────
-  if (data.summary) {
-    sectionHeader('Professional Summary');
-    font(F.body); color(C.body);
-    const lines = doc.splitTextToSize(data.summary, CW);
-    lines.forEach(line => { checkBreak(6); doc.text(line, ML, y); y += 5; });
-    y += 2;
+  body {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 10.5pt;
+    line-height: 1.5;
+    color: #1a1a2e;
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
-  // ── 4. EXPERIENCE ─────────────────────────────────────────────────────
-  if (data.experience?.length) {
-    sectionHeader('Work Experience');
-    data.experience.forEach((exp) => {
-      checkBreak(14);
+  a { color: #0d7377; text-decoration: none; }
 
-      // Title + dates on same line
-      font(F.jobTitle); color(C.dark);
-      doc.text(exp.title || '', ML, y);
-      font(F.small); color(C.muted);
-      const dates = exp.dates || '';
-      const datesW = doc.getTextWidth(dates);
-      doc.text(dates, PW - MR - datesW, y);
-      y += 5;
-
-      // Company + location
-      font(F.company); color(C.muted);
-      const companyStr = [exp.company, exp.location].filter(Boolean).join(' — ');
-      doc.text(companyStr, ML, y);
-      y += 5;
-
-      // Bullets
-      (exp.bullets || []).forEach(bullet => {
-        const text = bullet.replace(/^[•\-\*]\s*/, '');
-        const lines = doc.splitTextToSize(text, CW - 6);
-        checkBreak(lines.length * 4.5 + 2);
-        font(F.bullet); color(C.body);
-        doc.text('•', ML + 1, y);
-        lines.forEach((line, i) => { doc.text(line, ML + 5, y); y += 4.5; });
-        y += 0.5;
-      });
-      y += 3;
-    });
+  /* ── Header ── */
+  .header {
+    text-align: center;
+    padding-bottom: 10pt;
+    border-bottom: 2pt solid #0d7377;
+    margin-bottom: 10pt;
   }
 
-  // ── 5. EDUCATION ──────────────────────────────────────────────────────
-  if (data.education?.length) {
-    sectionHeader('Education');
-    data.education.forEach((edu) => {
-      checkBreak(12);
-      font(F.jobTitle); color(C.dark);
-      const degreeStr = [edu.degree, edu.field].filter(Boolean).join(' in ');
-      doc.text(degreeStr, ML, y);
-      font(F.small); color(C.muted);
-      const dates = edu.dates || '';
-      doc.text(dates, PW - MR - doc.getTextWidth(dates), y);
-      y += 5;
-
-      font(F.company); color(C.muted);
-      const schoolStr = [edu.school, edu.location].filter(Boolean).join(' — ');
-      doc.text(schoolStr, ML, y);
-      y += 5;
-
-      if (edu.details) {
-        font(F.small); color(C.muted);
-        const lines = doc.splitTextToSize(edu.details, CW);
-        lines.forEach(line => { doc.text(line, ML, y); y += 4; });
-      }
-      y += 2;
-    });
+  .name {
+    font-size: 22pt;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: #0d0d2b;
+    margin-bottom: 4pt;
   }
 
-  // ── 6. SKILLS ─────────────────────────────────────────────────────────
-  if (data.skills && Object.keys(data.skills).length) {
-    sectionHeader('Skills');
-    Object.entries(data.skills).forEach(([cat, items]) => {
-      if (!items?.length) return;
-      checkBreak(6);
-      font({ size: 9.5, style: 'bold' }); color(C.dark);
-      const catStr = `${cat}: `;
-      const catW = doc.getTextWidth(catStr);
-      doc.text(catStr, ML, y);
-      font(F.skills); color(C.body);
-      const skillsText = Array.isArray(items) ? items.join(', ') : items;
-      const skillLines = doc.splitTextToSize(skillsText, CW - catW);
-      doc.text(skillLines[0], ML + catW, y);
-      y += 4.5;
-      if (skillLines.length > 1) {
-        skillLines.slice(1).forEach(line => { doc.text(line, ML + catW, y); y += 4.5; });
-      }
-    });
-    y += 2;
+  .contact-line {
+    font-size: 9pt;
+    color: #555;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4pt 10pt;
   }
 
-  // ── 7. PROJECTS ───────────────────────────────────────────────────────
-  if (data.projects?.length) {
-    sectionHeader('Projects');
-    data.projects.forEach((proj) => {
-      checkBreak(10);
-      font(F.jobTitle); color(C.dark);
-      doc.text(proj.name || 'Project', ML, y);
-      if (proj.tech?.length) {
-        font(F.small); color(C.muted);
-        const techStr = proj.tech.join(', ');
-        doc.text(techStr, PW - MR - doc.getTextWidth(techStr), y);
-      }
-      y += 5;
-      if (proj.description) {
-        font(F.bullet); color(C.body);
-        const lines = doc.splitTextToSize(proj.description, CW);
-        lines.forEach(line => { checkBreak(5); doc.text(line, ML, y); y += 4.5; });
-      }
-      y += 2;
-    });
+  .contact-line span::before {
+    content: '•';
+    margin-right: 10pt;
+    color: #0d7377;
+  }
+  .contact-line span:first-child::before { content: ''; margin-right: 0; }
+
+  /* ── Sections ── */
+  .section { margin-bottom: 10pt; page-break-inside: avoid; }
+
+  .section-title {
+    font-size: 10pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #0d7377;
+    border-bottom: 1pt solid #0d7377;
+    padding-bottom: 2pt;
+    margin-bottom: 7pt;
   }
 
-  // ── 8. CERTIFICATIONS ─────────────────────────────────────────────────
-  if (data.certifications?.length) {
-    sectionHeader('Certifications');
-    data.certifications.forEach(cert => {
-      checkBreak(6);
-      font(F.bullet); color(C.body);
-      doc.text('•', ML + 1, y);
-      const lines = doc.splitTextToSize(cert, CW - 6);
-      lines.forEach(line => { doc.text(line, ML + 5, y); y += 4.5; });
-    });
-    y += 2;
+  /* ── Entries ── */
+  .entry { margin-bottom: 8pt; page-break-inside: avoid; }
+
+  .entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8pt;
+    margin-bottom: 3pt;
   }
 
-  // ── 9. AWARDS ─────────────────────────────────────────────────────────
-  if (data.awards?.length) {
-    sectionHeader('Awards & Achievements');
-    data.awards.forEach(award => {
-      checkBreak(6);
-      font(F.bullet); color(C.body);
-      doc.text('•', ML + 1, y);
-      const lines = doc.splitTextToSize(award, CW - 6);
-      lines.forEach(line => { doc.text(line, ML + 5, y); y += 4.5; });
-    });
+  .entry-title {
+    font-weight: bold;
+    font-size: 10.5pt;
+    color: #0d0d2b;
   }
 
-  return doc;
+  .entry-subtitle {
+    font-style: italic;
+    color: #555;
+    font-size: 9.5pt;
+  }
+
+  .entry-details {
+    font-size: 9pt;
+    color: #666;
+    margin-top: 2pt;
+  }
+
+  .entry-date {
+    font-size: 9pt;
+    color: #666;
+    white-space: nowrap;
+    flex-shrink: 0;
+    text-align: right;
+  }
+
+  /* ── Bullets ── */
+  .bullet-list {
+    list-style: none;
+    padding-left: 12pt;
+    margin-top: 3pt;
+  }
+
+  .bullet-list li {
+    position: relative;
+    padding-left: 10pt;
+    margin-bottom: 2pt;
+    font-size: 9.5pt;
+    color: #2d2d2d;
+    line-height: 1.45;
+  }
+
+  .bullet-list li::before {
+    content: '▸';
+    position: absolute;
+    left: 0;
+    color: #0d7377;
+    font-size: 8pt;
+    top: 1pt;
+  }
+
+  /* ── Skills ── */
+  .skill-row {
+    display: flex;
+    gap: 6pt;
+    margin-bottom: 4pt;
+    font-size: 9.5pt;
+    align-items: baseline;
+    flex-wrap: wrap;
+  }
+
+  .skill-cat {
+    font-weight: bold;
+    color: #0d0d2b;
+    white-space: nowrap;
+    min-width: 90pt;
+  }
+
+  .skill-items { color: #333; line-height: 1.4; }
+
+  /* ── Summary ── */
+  .summary-text {
+    font-size: 9.5pt;
+    color: #2d2d2d;
+    line-height: 1.6;
+    text-align: justify;
+  }
+
+  /* ── Print only ── */
+  @media print {
+    body { background: white; }
+    .no-print { display: none !important; }
+  }
+
+  /* ── Screen preview ── */
+  @media screen {
+    body {
+      max-width: 210mm;
+      margin: 0 auto;
+      padding: 14mm 16mm;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.15);
+      min-height: 297mm;
+    }
+  }
+</style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="name">${escapeHtml(data.name || 'Your Name')}</div>
+    <div class="contact-line">
+      ${contactItems.map(item => `<span>${item}</span>`).join('')}
+    </div>
+  </div>
+
+  ${data.summary ? `
+  <!-- Summary -->
+  <div class="section">
+    <div class="section-title">Professional Summary</div>
+    <p class="summary-text">${escapeHtml(data.summary)}</p>
+  </div>` : ''}
+
+  ${data.experience?.length ? `
+  <!-- Experience -->
+  <div class="section">
+    <div class="section-title">Work Experience</div>
+    ${experienceHtml}
+  </div>` : ''}
+
+  ${data.education?.length ? `
+  <!-- Education -->
+  <div class="section">
+    <div class="section-title">Education</div>
+    ${educationHtml}
+  </div>` : ''}
+
+  ${Object.keys(data.skills || {}).length ? `
+  <!-- Skills -->
+  <div class="section">
+    <div class="section-title">Skills</div>
+    ${skillsHtml}
+  </div>` : ''}
+
+  ${data.projects?.length ? `
+  <!-- Projects -->
+  <div class="section">
+    <div class="section-title">Projects</div>
+    ${projectsHtml}
+  </div>` : ''}
+
+  ${data.certifications?.length ? `
+  <!-- Certifications -->
+  <div class="section">
+    <div class="section-title">Certifications</div>
+    <ul class="bullet-list">${certsHtml}</ul>
+  </div>` : ''}
+
+  ${data.awards?.length ? `
+  <!-- Awards -->
+  <div class="section">
+    <div class="section-title">Awards &amp; Achievements</div>
+    <ul class="bullet-list">${awardsHtml}</ul>
+  </div>` : ''}
+
+</body>
+</html>`;
 }
 
+/**
+ * Open the resume in a new tab and trigger browser print → Save as PDF
+ */
 export function downloadStructuredPdf(data) {
-  const doc = generatePdfFromStructured(data);
-  const safeName = (data.name || 'Resume').replace(/\s+/g, '_');
-  doc.save(`${safeName}_ATS_Optimized.pdf`);
+  const html = buildResumeHtml(data);
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+
+  const win = window.open(url, '_blank');
+  if (win) {
+    win.onload = () => {
+      setTimeout(() => {
+        win.print();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      }, 500);
+    };
+  } else {
+    // Fallback: just open in new tab if popup blocked
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
 }
 
+/**
+ * Get a blob URL for the HTML resume (for iframe preview)
+ */
 export function getPdfBlobUrl(data) {
-  const doc = generatePdfFromStructured(data);
-  const blob = doc.output('blob');
+  const html = buildResumeHtml(data);
+  const blob = new Blob([html], { type: 'text/html' });
   return URL.createObjectURL(blob);
 }
 
-// Legacy plain-text fallback
+// Legacy compat
 export function downloadPdf(resumeText, candidateName = 'Resume') {
-  const data = { name: candidateName, optimized_text: resumeText };
-  downloadStructuredPdf(data);
+  downloadStructuredPdf({ name: candidateName, summary: resumeText });
 }
